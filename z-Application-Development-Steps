@@ -1,0 +1,104 @@
+1. Create a next.js app
+2. Install Prisma
+   -> Prisma is a type safe ORM that allows you to connect
+      and query your db using a standard API that is through
+      the prisma client 
+      a. pnpm add -D prisma
+      b. run pnpm dlx prisma init
+      c. add .env to git ignore
+      d. copy your pooled connection string from Neon dashboard
+        to .env
+3. Use Neon serverless driver with Prisma
+   -> The neon serverless driver is a Postgres driver for Javascript/
+      TypeScript that lets you query data over HTTP/Web Sockets which
+      is suitable for serverless and edge environments
+      1. To set up Prisma with Neon serverless driver, use the
+         Prisma driver adapter. This adapter allows you to choose
+         a different database driver than Prisma's default driver
+         for communicating with your database.
+      2. enable the driverAdapters Preview feature flag in your
+         schema.prisma file
+         generator client {
+            provider        = "prisma-client-js"
+            previewFeatures = ["driverAdapters"] 
+         }
+      3. Install the prisma adapter, Neon's serverless driver, and ws(web socket)
+         -> pnpm add @prisma/adapter-neon @neondatabase/serverless ws
+         -> pnpm add -D @types/ws
+      4. Install the @prisma/client
+         -> pnpm add @prisma/client
+         -> A prisma client is tailored to your database schema which makes
+            it easy to run type safe queries and access your database, tables
+            and different functions that are accessible through the prisma
+            client
+      5. Instatiate prisma client
+          import ws from 'ws';
+          import { PrismaClient } from '@prisma/client'
+          import { PrismaNeon } from '@prisma/adapter-neon'
+          import { Pool, neonConfig } from '@neondatabase/serverless'
+
+          const prismaClientSingleton = () => {
+            neonConfig.webSocketConstructor = ws;
+            const connectionString = `$(process.env.DATABASE_URL)`
+
+            const pool = new Pool({ connectionString })
+            const adapter = new PrismaNeon(pool)
+            const prisma = new PrismaClient({ adapter })
+
+            return prisma
+          }
+
+          declare const globalThis: {
+            prismaGlobal: ReturnTpe<typeof prismaClientSingleton>
+          } & typeof global
+
+          const prisma = globalThis.prismaGlobal ?? prismaCLientStingleton()
+
+          export default prisma
+
+          if(process.env.NODE_ENV !== 'production') globalThis.prismaGlobal = prisma
+      6. Install bufferutil as a dev dependency
+         -> pnpm add -D bufferutil
+      7. Create the database schema
+         a. Create User, Invoice, Customer and Revenue models inside the schema.prisma file
+            model User {
+              id       String @id @default(uuid()) @db.Uuid
+              name     String @db.VarChar(255)
+              email    String @unique
+              password String
+            }
+
+            model Invoice {
+              id          String   @id @default(uuid()) @db.Uuid
+              customerId  String   @db.Uuid
+              amount      Int
+              status      String   @db.VarChar(255)
+              date        DateTime @db.Date
+              customer    Customer @relation(fields: [customerId], references: [id])
+            }
+
+            model Customer {
+              id       String @id @default(uuid()) @db.Uuid
+              name     String @db.VarChar(255)
+              email    String @db.VarChar(255)
+              imageUrl String @db.VarChar(255)
+
+              invoices Invoice[]
+            }
+
+            model Revenue {
+              month   String @id @db.VarChar(4)
+              revenue Int
+            }
+        b. To map your data model to the database schema, you need to
+           use the prisma migrate commands:
+           pnpm dlx prisma migrate dev --name init
+        c. this command does three things:
+           a. It creates a new SQL migration file for this migration
+           b. It runs the SQL migration file against the database
+           c. runs the generate command to generate the prisma client
+           d. List
+4. Check data using Prisma Studio as well as Neon Tables
+   -> using Prisma studio
+      -> pnpm dlx prisma studio
+
